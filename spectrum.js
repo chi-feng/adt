@@ -29,6 +29,37 @@ const chartColors = {
     negative: 'rgba(65, 105, 225, 1.0)' // Blue for negative differences (Opaque)
 };
 
+// --- Mel Scale Conversion Helpers ---
+// TODO: Move these to a shared utils.js file to adhere to DRY principle
+/**
+ * Convert frequency in Hz to Mel scale.
+ * @param {number} hz Frequency in Hz.
+ * @returns {number} Frequency in Mel scale.
+ */
+function hzToMel(hz) {
+    return 2595 * Math.log10(1 + hz / 700);
+}
+
+/**
+ * Convert Mel scale to frequency in Hz.
+ * @param {number} mel Frequency in Mel scale.
+ * @returns {number} Frequency in Hz.
+ */
+function melToHz(mel) {
+    return 700 * (Math.pow(10, mel / 2595) - 1);
+}
+
+// --- Target Frequencies for Axis Labels ---
+const targetFrequenciesHz = [
+    20, 50, 100, 200, 300, 500, 700,
+    1000, 1500, 2000, 3000, 5000, 7000,
+    10000, 15000, 20000
+];
+// Pre-calculate Mel values for target frequencies
+const targetFrequenciesMel = targetFrequenciesHz.map(hzToMel);
+// Define a threshold for matching Mel values (adjust as needed)
+const MEL_TICK_THRESHOLD = 15; // Smaller values mean stricter matching
+
 // --- Public API ---
 
 // Initialize spectrum analysis
@@ -322,7 +353,7 @@ function updateCharts() {
     const { sampleRate, fftSize, numFreqBinsUsed } = specParams;
     
     // Generate frequency scale based on actual data parameters
-    const { freqValues, labels } = generateFrequencyScale(sampleRate, fftSize, numFreqBinsUsed);
+    const { freqValues } = generateFrequencyScale(sampleRate, fftSize, numFreqBinsUsed);
 
     // Get canvas elements
     const comparisonCanvas = document.getElementById('frequencySpectrumChart');
@@ -338,13 +369,17 @@ function updateCharts() {
     const filename1 = audioState?.filenames?.file1 || 'File 1';
     const filename2 = audioState?.filenames?.file2 || 'File 2';
     
+    // Map data to { x: melValue, y: levelDb }
     const mapData = (data) => Array.from(data)
-                                    .map((y, i) => ({ x: freqValues[i], y: (isFinite(y) ? y : null) }));
+                                    .map((y, i) => ({ 
+                                        x: hzToMel(freqValues[i]), // Convert Hz to Mel for x-axis
+                                        y: (isFinite(y) ? y : null) 
+                                    }));
 
     if (hasFile1) {
         comparisonDatasets.push({
             label: filename1, // Use filename
-            data: mapData(spectrumState.data.file1),
+            data: mapData(spectrumState.data.file1), // Use mapData with Mel conversion
             borderColor: chartColors.file1,
             backgroundColor: chartColors.file1.replace('1.0', '0.2'),
             borderWidth: 1, // Default to 1px width
@@ -356,7 +391,7 @@ function updateCharts() {
     if (hasFile2) {
          comparisonDatasets.push({
             label: filename2, // Use filename
-            data: mapData(spectrumState.data.file2),
+            data: mapData(spectrumState.data.file2), // Use mapData with Mel conversion
             borderColor: chartColors.file2,
             backgroundColor: chartColors.file2.replace('1.0', '0.2'),
             borderWidth: 1, // Default to 1px width
@@ -374,27 +409,51 @@ function updateCharts() {
         elements: { point: { radius: 0 } },
         scales: {
             x: {
-                type: 'logarithmic',
-                min: window.AppConfig.SPECTRUM_MIN_FREQ,
-                max: window.AppConfig.ANALYSIS_MAX_FREQ, 
+                type: 'linear',
+                min: hzToMel(window.AppConfig.SPECTRUM_MIN_FREQ),
+                max: hzToMel(window.AppConfig.ANALYSIS_MAX_FREQ),
                 grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                afterTickToLabelConversion: function(scaleInstance) {
+                    // Replace ALL tick labels with our target frequencies
+                    // This simple array holds Hz values and their display text
+                    const labels = [
+                        { hz: 20, text: '20' },
+                        { hz: 50, text: '50' },
+                        { hz: 100, text: '100' },
+                        { hz: 200, text: '200' },
+                        { hz: 300, text: '300' },
+                        { hz: 500, text: '500' },
+                        { hz: 700, text: '700' },
+                        { hz: 1000, text: '1k' },
+                        { hz: 1500, text: '1.5k' },
+                        { hz: 2000, text: '2k' },
+                        { hz: 3000, text: '3k' },
+                        { hz: 5000, text: '5k' },
+                        { hz: 7000, text: '7k' },
+                        { hz: 10000, text: '10k' },
+                        { hz: 15000, text: '15k' },
+                        { hz: 20000, text: '20k' }
+                    ];
+                    
+                    // Clear existing labels and generate our own
+                    scaleInstance.ticks = [];
+                    
+                    // Add our frequency labels at Mel-scaled positions
+                    labels.forEach(label => {
+                        const melValue = hzToMel(label.hz);
+                        // Only add if in range
+                        if (melValue >= scaleInstance.min && melValue <= scaleInstance.max) {
+                            scaleInstance.ticks.push({ value: melValue, label: label.text });
+                        }
+                    });
+                    
+                    return scaleInstance;
+                },
                 ticks: {
                     color: 'rgba(255, 255, 255, 0.7)',
-                    // Revert to simpler callback for default log ticks, just format labels
-                     callback: function(value, index, ticks) {
-                        // Basic formatting for log ticks provided by Chart.js
-                        if (value >= 1000) return (value / 1000).toFixed(value < 10000 ? 1 : 0) + 'K'; // Add K for kHz, adjust precision
-                        if (value === 0) return '0'; // Handle 0 case if it appears
-                        // You might add more specific checks if needed, e.g., for 20, 50, etc.
-                        // Let Chart.js decide which ticks to show based on log scale.
-                        // Return value directly for ticks below 1000 Hz or let Chart.js skip based on density.
-                         return value.toString(); 
-                    },
                     maxRotation: 0,
-                    autoSkip: true, // Allow Chart.js to skip ticks to prevent overlap
-                    maxTicksLimit: 15 // Limit density further if needed
+                    autoSkip: false // Prevent autoSkipping our labels
                 },
-                 title: { display: false } // Title removed, axis implies frequency
             },
             y: {
                 grid: { color: 'rgba(255, 255, 255, 0.1)' },
@@ -411,7 +470,13 @@ function updateCharts() {
             },
             tooltip: {
                 callbacks: {
-                    title: (context) => `${formatFrequencyTooltip(context[0].parsed.x)} Hz`,
+                    title: (context) => {
+                        if (!context || !context[0] || context[0].parsed === undefined) return '';
+                        const melValue = context[0].parsed.x;
+                        if (!isFinite(melValue)) return 'N/A';
+                        const freqHz = melToHz(melValue);
+                        return `${formatFrequencyTooltip(freqHz)} Hz`;
+                    },
                     label: function(context) {
                         let label = context.dataset.label || '';
                         if (label) { label += ': '; }
@@ -427,13 +492,18 @@ function updateCharts() {
         }
     };
 
-    // Update or create the comparison chart
+    // Force comparison chart recreation instead of update
     if (spectrumState.charts.comparison) {
-        spectrumState.charts.comparison.data = comparisonData;
-        spectrumState.charts.comparison.options = comparisonOptions;
-        spectrumState.charts.comparison.update('none');
-    } else if (hasFile1 || hasFile2) { // Only create if we have *any* data
-        spectrumState.charts.comparison = new Chart(comparisonCanvas, { type: 'line', data: comparisonData, options: comparisonOptions });
+        spectrumState.charts.comparison.destroy();
+        spectrumState.charts.comparison = null;
+    }
+    
+    if (hasFile1 || hasFile2) {
+        spectrumState.charts.comparison = new Chart(comparisonCanvas, { 
+            type: 'line', 
+            data: comparisonData, 
+            options: comparisonOptions 
+        });
     }
 
     // --- Difference Chart --- 
@@ -441,13 +511,17 @@ function updateCharts() {
     if (hasDifference && diffChartSection) {
         diffChartSection.classList.remove('hidden');
         
+        // Map diff data to { x: melValue, y: levelDiffDb }
         const mapDiffData = (data) => Array.from(data)
-                                        .map((y, i) => ({ x: freqValues[i], y: (isFinite(y) ? y : null) }));
+                                        .map((y, i) => ({ 
+                                            x: hzToMel(freqValues[i]), // Convert Hz to Mel for x-axis
+                                            y: (isFinite(y) ? y : null) 
+                                        }));
 
         const differenceData = {
             datasets: [{
                 label: `Difference (${filename2} - ${filename1})`, // Use filenames in label
-                data: mapDiffData(spectrumState.data.difference),
+                data: mapDiffData(spectrumState.data.difference), // Use mapDiffData with Mel conversion
                 fill: {
                    target: 'origin',
                    above: chartColors.positive.replace('1.0', '0.7'), 
@@ -465,24 +539,47 @@ function updateCharts() {
             normalized: true, // Also good for performance
             scales: {
                 x: {
-                    type: 'logarithmic',
-                    min: window.AppConfig.SPECTRUM_MIN_FREQ,
-                    max: window.AppConfig.ANALYSIS_MAX_FREQ,
+                    type: 'linear',
+                    min: hzToMel(window.AppConfig.SPECTRUM_MIN_FREQ),
+                    max: hzToMel(window.AppConfig.ANALYSIS_MAX_FREQ),
                     grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                    ticks: { 
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        // Revert to simpler callback for default log ticks, just format labels
-                         callback: function(value, index, ticks) {
-                            // Basic formatting for log ticks provided by Chart.js
-                            if (value >= 1000) return (value / 1000).toFixed(value < 10000 ? 1 : 0) + 'K';
-                            if (value === 0) return '0';
-                             return value.toString();
-                        },
-                        maxRotation: 0,
-                        autoSkip: true, // Allow Chart.js to skip ticks
-                        maxTicksLimit: 15 // Limit density
+                    afterTickToLabelConversion: function(scaleInstance) {
+                        // Same function as for comparison chart
+                        const labels = [
+                            { hz: 20, text: '20' },
+                            { hz: 50, text: '50' },
+                            { hz: 100, text: '100' },
+                            { hz: 200, text: '200' },
+                            { hz: 300, text: '300' },
+                            { hz: 500, text: '500' },
+                            { hz: 700, text: '700' },
+                            { hz: 1000, text: '1k' },
+                            { hz: 1500, text: '1.5k' },
+                            { hz: 2000, text: '2k' },
+                            { hz: 3000, text: '3k' },
+                            { hz: 5000, text: '5k' },
+                            { hz: 7000, text: '7k' },
+                            { hz: 10000, text: '10k' },
+                            { hz: 15000, text: '15k' },
+                            { hz: 20000, text: '20k' }
+                        ];
+                        
+                        scaleInstance.ticks = [];
+                        
+                        labels.forEach(label => {
+                            const melValue = hzToMel(label.hz);
+                            if (melValue >= scaleInstance.min && melValue <= scaleInstance.max) {
+                                scaleInstance.ticks.push({ value: melValue, label: label.text });
+                            }
+                        });
+                        
+                        return scaleInstance;
                     },
-                    title: { display: true, text: 'Frequency (Hz)', color: 'rgba(255, 255, 255, 0.9)' }
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        maxRotation: 0,
+                        autoSkip: false
+                    },
                 },
                 y: {
                     grid: { color: 'rgba(255, 255, 255, 0.1)' },
@@ -496,8 +593,13 @@ function updateCharts() {
                 legend: { display: false }, // Keep legend hidden for diff
                 tooltip: {
                     callbacks: {
-                        title: (context) => `${formatFrequencyTooltip(context[0].parsed.x)} Hz`,
-                        // Update tooltip label to use dynamic filenames
+                        title: (context) => {
+                            if (!context || !context[0] || context[0].parsed === undefined) return '';
+                            const melValue = context[0].parsed.x;
+                            if (!isFinite(melValue)) return 'N/A';
+                            const freqHz = melToHz(melValue);
+                            return `${formatFrequencyTooltip(freqHz)} Hz`;
+                        },
                         label: (context) => {
                             const value = context.parsed.y !== null ? context.parsed.y.toFixed(2) + ' dB' : 'No Data';
                             return `${filename2} - ${filename1}: ${value}`;
@@ -507,16 +609,18 @@ function updateCharts() {
             }
         };
 
-        // Update or create the difference chart
+        // Force difference chart recreation instead of update
         if (spectrumState.charts.difference) {
-            spectrumState.charts.difference.data = differenceData;
-            spectrumState.charts.difference.options = differenceOptions;
-            spectrumState.charts.difference.update('none');
-            // Delayed update might still be needed depending on browser/Chart.js version
-            setTimeout(() => { if (spectrumState.charts.difference) { spectrumState.charts.difference.update('none'); } }, 50); 
-        } else {
-            spectrumState.charts.difference = new Chart(differenceCanvas, { type: 'line', data: differenceData, options: differenceOptions });
-            setTimeout(() => { if (spectrumState.charts.difference) { spectrumState.charts.difference.update('none'); } }, 50);
+            spectrumState.charts.difference.destroy();
+            spectrumState.charts.difference = null;
+        }
+        
+        if (hasDifference) {
+            spectrumState.charts.difference = new Chart(differenceCanvas, { 
+                type: 'line', 
+                data: differenceData, 
+                options: differenceOptions 
+            });
         }
         console.log("Difference chart updated and shown");
 
@@ -530,7 +634,7 @@ function updateCharts() {
         }
     }
 
-    console.log("Charts updated based on available spectrum data");
+    console.log("Charts updated based on available spectrum data (using Mel scale for x-axis)");
 }
 
 // --- New Highlighting Function ---
