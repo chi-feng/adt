@@ -57,7 +57,7 @@
       /* ===== Layout ===== */
       .grid-container {
         display: grid;
-        grid-template-columns: 240px 1fr;
+        grid-template-columns: 300px 1fr; /* Increased left sidebar width */
         height: 100%;
         gap: var(--spacing-sm);
         padding: var(--spacing-sm);
@@ -84,7 +84,17 @@
       /* Right Panel */
       .grid-right {
         display: grid;
-        grid-template-rows: auto 3fr 2fr;
+        /* Adjust grid rows for Spectrogram + 2x2 grid below */
+        grid-template-rows: auto 1fr; /* Spectrogram, Analysis Grid */
+        gap: var(--spacing-sm);
+        overflow: hidden;
+      }
+
+      /* Analysis Grid Section (replaces individual rows) */
+      .analysis-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr; /* Two equal columns */
+        grid-template-rows: 2fr 1fr;    /* Top row twice height of bottom */
         gap: var(--spacing-sm);
         overflow: hidden;
       }
@@ -231,10 +241,9 @@
 
       /* Tab Content */
       .tab-content-container {
-        flex-grow: 1;
         position: relative;
         overflow: hidden;
-        height: 256px;
+        height: 256px; /* Fixed height */
       }
 
       .tab-content {
@@ -290,40 +299,110 @@
         box-shadow: 0 2px 5px var(--color-shadow);
       }
 
-      /* ===== Spectrum Chart Sections ===== */
-      .spectrum-chart-section,
-      .spectrum-diff-chart-section {
-        background: var(--color-background-light);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+      /* ===== Analysis Grid Items ===== */
+      .analysis-item {
+          background: var(--color-background-light);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          position: relative; /* Needed for chart container absolute positioning */
       }
 
-      .spectrum-diff-chart-section.hidden {
-        display: none;
+      .analysis-item.hidden {
+          display: none;
       }
 
-      .spectrum-chart-section h3,
-      .spectrum-diff-chart-section h3 {
-        margin: 0 0 var(--spacing-xs) 0;
-        font-size: var(--font-size-small);
-        font-weight: 500;
-        color: var(--color-text-medium);
-        flex-shrink: 0;
+      .analysis-item h3 {
+          margin: 0;
+          padding: var(--spacing-xs) var(--spacing-sm);
+          font-size: var(--font-size-xs);
+          font-weight: 500;
+          color: var(--color-text-medium);
+          background: var(--color-background-medium);
+          flex-shrink: 0;
+          text-align: center; /* Center titles */
       }
 
       .chart-container {
-        flex-grow: 1;
-        position: relative;
-        overflow: hidden;
-        background: var(--color-background-dark);
+          flex-grow: 1;
+          position: relative; /* Relative positioning for canvas inside */
+          overflow: hidden;
+          background: var(--color-background-dark);
+          padding: var(--spacing-xs); /* Add small padding around charts */
       }
 
       .chart-container canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
+          display: block;
+          width: 100%;
+          height: 100%;
       }
+
+      /* LUFS/Stats specific styles within grid item */
+      .stats-panel {
+          background: var(--color-background-dark);
+          padding: var(--spacing-md);
+          flex-grow: 1;
+          display: flex;
+          flex-direction: column;
+          overflow-y: auto;
+          max-height: 100%;
+          gap: var(--spacing-lg); /* Add gap between file sections */
+      }
+      
+      .stats-file-section,
+      .stats-current-section {
+          /* Style for each section */
+      }
+      
+      .stats-filename,
+      .stats-current-section h4 {
+          font-weight: bold;
+          color: var(--color-text-medium);
+          margin-bottom: var(--spacing-xs);
+          font-size: var(--font-size-small);
+          /* Filename overflow */
+          max-width: 100%; 
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+      }
+      
+      .stats-condensed-table {
+          width: 100%;
+          border-collapse: collapse; /* Collapse borders for cleaner look */
+      }
+      
+      .stats-condensed-table td {
+          padding: var(--spacing-xs) var(--spacing-sm); /* Condensed padding */
+          font-size: var(--font-size-xs);
+          vertical-align: middle;
+          border-bottom: 1px solid var(--color-background-light); /* Subtle row separator */
+      }
+      
+      /* Label column */
+      .stats-condensed-table td:first-child {
+          color: var(--color-text-dark);
+          width: 65%; /* Give more space to labels */
+      }
+      
+      /* Value column */
+      .stats-condensed-table td:last-child {
+          text-align: right;
+          font-family: monospace;
+          font-weight: bold;
+          color: var(--color-text-light); /* Value color */
+          width: 35%;
+      }
+      
+      /* Remove bottom border from last row of each table */
+      .stats-condensed-table tr:last-child td {
+          border-bottom: none;
+      }
+
+      /* Remove old table layout styles */
+      /* .stats-table, .stats-header, .stats-row, .stats-cell { display: none; } */
+      /* .stats-header + .stats-header { display: none; } */
+
     </style>
   </head>
   <body>
@@ -347,6 +426,47 @@
           time range for analysis and looping. Use 1, 2, or 3 to switch views,
           Space to play/pause.
         </div>
+        
+        <!-- Moved Loudness Stats Panel -->
+        <div class="analysis-item" id="loudness-stats-item">
+              <div class="stats-panel">
+                  <!-- File 1 Stats Table -->
+                  <div class="stats-file-section">
+                      <h4 class="stats-filename" id="statsHeaderFile1">File 1</h4>
+                      <table class="stats-condensed-table">
+                          <tr><td>Integrated (LUFS)</td><td id="statIntegratedLufs1">--.-</td></tr>
+                          <tr><td>Threshold (LUFS)</td><td id="statThreshold1">--.-</td></tr>
+                          <tr><td>Peak Momentary (LUFS)</td><td id="statPeakLufs1">--.-</td></tr>
+                          <tr><td>LRA (LU)</td><td id="statLRA1">--.-</td></tr>
+                          <tr><td>LRA Threshold (LUFS)</td><td id="statLRAThreshold1">--.-</td></tr>
+                          <tr><td>LRA Low (LUFS)</td><td id="statLRALow1">--.-</td></tr>
+                          <tr><td>LRA High (LUFS)</td><td id="statLRAHigh1">--.-</td></tr>
+                      </table>
+                  </div>
+                  
+                  <!-- File 2 Stats Table -->
+                  <div class="stats-file-section">
+                      <h4 class="stats-filename" id="statsHeaderFile2">File 2</h4>
+                      <table class="stats-condensed-table">
+                          <tr><td>Integrated (LUFS)</td><td id="statIntegratedLufs2">--.-</td></tr>
+                          <tr><td>Threshold (LUFS)</td><td id="statThreshold2">--.-</td></tr>
+                          <tr><td>Peak Momentary (LUFS)</td><td id="statPeakLufs2">--.-</td></tr>
+                          <tr><td>LRA (LU)</td><td id="statLRA2">--.-</td></tr>
+                          <tr><td>LRA Threshold (LUFS)</td><td id="statLRAThreshold2">--.-</td></tr>
+                          <tr><td>LRA Low (LUFS)</td><td id="statLRALow2">--.-</td></tr>
+                          <tr><td>LRA High (LUFS)</td><td id="statLRAHigh2">--.-</td></tr>
+                      </table>
+                  </div>
+                  
+                  <!-- Current Playback Position Section -->
+                  <div class="stats-current-section">
+                      <h4>Current Playback</h4>
+                      <table class="stats-condensed-table">
+                           <tr><td>Momentary (LUFS)</td><td id="statCurrentLufs">--.-</td></tr>
+                      </table>
+                  </div>
+              </div>
+          </div>
       </div>
 
       <!-- Right Column -->
@@ -375,9 +495,8 @@
             <div class="time-range-display">
               Selection: <span id="spectrumTimeRange">0:00 - 0:00</span>
             </div>
-          </div>          
+          </div>
           <div class="tab-content-container">
-            <!-- Added container -->
             <div id="file1-tab" class="tab-content active">
               <div class="canvas-container">
                 <canvas id="spectrogramCanvas1" class="spectrogram"></canvas>
@@ -393,25 +512,46 @@
                 <canvas id="diffSpectrogramCanvas" class="spectrogram"></canvas>
               </div>
             </div>
-            <!-- Overlay covers the tab-content-container -->
             <canvas id="playbackOverlay"></canvas>
             <div id="spectrogram-tooltip"></div>
           </div>
         </div>
 
-        <!-- Middle Row: Spectrum Analysis -->
-        <div class="spectrum-chart-section">
-          <div class="chart-container">
-            <canvas id="frequencySpectrumChart"></canvas>
+        <!-- Bottom Section: Analysis Grid (2x2) -->
+        <div class="analysis-grid">
+          <!-- Top Left: Spectrum Comparison -->
+          <div class="analysis-item" id="spectrum-comparison-item">
+              <h3>Frequency Spectrum</h3>
+              <div class="chart-container">
+                  <canvas id="frequencySpectrumChart"></canvas>
+              </div>
+          </div>
+
+          <!-- Top Right: LUFS Comparison Chart -->
+          <div class="analysis-item hidden" id="lufs-comparison-item">
+              <h3>Momentary Loudness</h3>
+              <div class="chart-container">
+                  <canvas id="lufsComparisonChart"></canvas>
+              </div>
+          </div>
+
+          <!-- Bottom Left: Spectrum Difference -->
+          <div class="analysis-item hidden" id="spectrum-difference-item">
+              <h3>Spectral Difference</h3>
+              <div class="chart-container">
+                  <canvas id="spectralDifferenceChart"></canvas>
+              </div>
+          </div>
+
+          <!-- Bottom Right: Placeholder for LUFS Difference Chart -->
+          <div class="analysis-item hidden" id="lufs-difference-item">
+              <h3>Momentary Loudness Difference</h3>
+              <div class="chart-container">
+                  <canvas id="lufsDifferenceChart"></canvas>
+              </div>
           </div>
         </div>
 
-        <!-- Bottom Row: Spectral Difference -->
-        <div class="spectrum-diff-chart-section hidden">
-          <div class="chart-container">
-            <canvas id="spectralDifferenceChart"></canvas>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -421,10 +561,12 @@
 
     <!-- Application modules -->
     <script src="config.js"></script>
+    <script src="colors.js"></script> <!-- Include colors first -->
     <script src="audio.js"></script>
     <script src="visualization.js"></script>
     <script src="ui.js"></script>
     <script src="spectrum.js"></script>
+    <script src="lufs.js"></script>
     <script src="main.js"></script>
   </body>
 </html>
