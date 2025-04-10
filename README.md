@@ -1,6 +1,6 @@
 # Audio Diff Tool
 
-![Audio Diff Tool Screenshot](diff-tool-screenshot.png)
+<img width="1714" alt="Screenshot 2025-04-10 at 3 57 06 PM" src="https://github.com/user-attachments/assets/03faee73-2ae1-49ba-b178-5b14c4681d4e" />
 
 A web-based tool designed to load, visualize, and compare two audio files side-by-side. It provides spectrogram displays, audio playback, and frequency spectrum analysis capabilities.
 
