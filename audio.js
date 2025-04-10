@@ -199,11 +199,38 @@ function setLoopRegion(start, end, enableLoop = true) {
     const minLoopDuration = 0.05; // Shorter minimum loop? 
     const isValidLoop = (validEnd - validStart) >= minLoopDuration;
     
+    // Store previous loop state to detect changes
+    const wasLoopEnabled = audioState.loopMode;
+    const previousStart = audioState.loopStart;
+    const previousEnd = audioState.loopEnd;
+    
     audioState.loopStart = validStart;
     audioState.loopEnd = validEnd;
     audioState.loopMode = enableLoop && isValidLoop;
     
     console.log(`Loop region set: ${audioState.loopStart.toFixed(2)}s to ${audioState.loopEnd.toFixed(2)}s, enabled: ${audioState.loopMode}`);
+    
+    // Check if loop mode was disabled or loop region changed significantly
+    if ((wasLoopEnabled && !audioState.loopMode) || 
+        (wasLoopEnabled && audioState.loopMode && 
+         (Math.abs(previousStart - validStart) > 0.1 || Math.abs(previousEnd - validEnd) > 0.1))) {
+        // Reset spectrum analyzer if loop was disabled or range changed significantly
+        if (window.SpectrumAnalyzer) {
+            console.log("Loop region changed - resetting spectrum analyzer range");
+            if (!audioState.loopMode) {
+                // Reset to full song if loop disabled
+                window.SpectrumAnalyzer.updateTimeRange(0, audioState.duration);
+            } else {
+                // Update to new loop region if loop still enabled but range changed
+                window.SpectrumAnalyzer.updateTimeRange(validStart, validEnd);
+            }
+            
+            // Force UI update to reflect changes
+            if (window.UIController && window.UIController.updateUI) {
+                window.UIController.updateUI();
+            }
+        }
+    }
     
     // If playing, restart playback applying the new loop
     if (audioState.isPlaying) {

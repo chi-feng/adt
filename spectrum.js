@@ -16,18 +16,21 @@ const spectrumState = {
         difference: null
     },
     dom: { // Added to store relevant DOM elements
-        diffChartSection: null
+        // diffChartSection: null // Removed - targetting item div directly now
     },
     initialized: false
 };
 
 // --- Chart Colors ---
+// Moved to colors.js
+/*
 const chartColors = {
     file1: 'rgba(65, 105, 225, 1.0)', // Royal Blue (Opaque)
     file2: 'rgba(255, 99, 71, 1.0)',  // Tomato Red (Opaque)
     positive: 'rgba(255, 99, 71, 1.0)', // Red for positive differences (Opaque)
     negative: 'rgba(65, 105, 225, 1.0)' // Blue for negative differences (Opaque)
 };
+*/
 
 // --- Mel Scale Conversion Helpers ---
 // TODO: Move these to a shared utils.js file to adhere to DRY principle
@@ -68,15 +71,15 @@ function initSpectrumAnalysis() {
     if (spectrumState.initialized) {
         return;
     }
-    
-    // Get the DOM element for the difference chart section
-    spectrumState.dom.diffChartSection = document.querySelector('.spectrum-diff-chart-section');
-    if (!spectrumState.dom.diffChartSection) {
-        console.error("Could not find the difference chart section element.");
-    }
-    
+
+    // Get the DOM element for the difference chart section - REMOVED, handled in updateCharts
+    // spectrumState.dom.diffChartSection = document.querySelector('.spectrum-diff-chart-section');
+    // if (!spectrumState.dom.diffChartSection) {
+    //     console.error("Could not find the difference chart section element.");
+    // }
+
     // Charts are created dynamically in updateCharts now
-    
+
     spectrumState.initialized = true;
     console.log("Spectrum analysis initialized");
 }
@@ -88,6 +91,8 @@ function updateTimeRange(start, end) {
         console.warn("Invalid time range values", start, end);
         return;
     }
+
+    console.log(`Spectrum analyzer updateTimeRange: ${start.toFixed(2)}s to ${end.toFixed(2)}s`);
     
     // Update state
     spectrumState.timeRange.start = start;
@@ -100,6 +105,7 @@ function updateTimeRange(start, end) {
     }
     
     // Recompute and update charts based on available spectrograms
+    console.log("Spectrum analyzer recomputing with new time range");
     computeAndPlotSpectra(); // Use the unified function
 }
 
@@ -507,9 +513,10 @@ function updateCharts() {
     }
 
     // --- Difference Chart --- 
-    const diffChartSection = spectrumState.dom.diffChartSection;
-    if (hasDifference && diffChartSection) {
-        diffChartSection.classList.remove('hidden');
+    // Target the grid item container now
+    const diffGridItem = document.getElementById('spectrum-difference-item');
+    if (hasDifference && diffGridItem) {
+        diffGridItem.classList.remove('hidden');
         
         // Map diff data to { x: melValue, y: levelDiffDb }
         const mapDiffData = (data) => Array.from(data)
@@ -524,10 +531,10 @@ function updateCharts() {
                 data: mapDiffData(spectrumState.data.difference), // Use mapDiffData with Mel conversion
                 fill: {
                    target: 'origin',
-                   above: chartColors.positive.replace('1.0', '0.7'), 
-                   below: chartColors.negative.replace('1.0', '0.7')
+                   above: chartColors.positive, // Use colors from colors.js
+                   below: chartColors.negative
                 },
-                borderWidth: 0, 
+                borderWidth: 0,
                 pointRadius: 0,
                 tension: 0,
                 spanGaps: false
@@ -624,8 +631,8 @@ function updateCharts() {
         }
         console.log("Difference chart updated and shown");
 
-    } else if (diffChartSection) {
-        diffChartSection.classList.add('hidden'); // Hide the section if no diff data
+    } else if (diffGridItem) {
+        diffGridItem.classList.add('hidden'); // Hide the grid item if no diff data
         // Destroy the difference chart if it exists to free resources
         if (spectrumState.charts.difference) {
              spectrumState.charts.difference.destroy();
@@ -635,6 +642,8 @@ function updateCharts() {
     }
 
     console.log("Charts updated based on available spectrum data (using Mel scale for x-axis)");
+    // Ensure highlighting is applied after chart updates
+    updateChartHighlighting();
 }
 
 // --- New Highlighting Function ---

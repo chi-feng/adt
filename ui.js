@@ -103,41 +103,41 @@ function switchTab(tabId) {
     
     // Update the audio engine state
     window.AudioEngine.state.activeTab = tabId;
-    
+
     // Reposition overlay FIRST to get correct dimensions for drawing
-    positionOverlayWithoutUpdate(); 
-    
+    positionOverlayWithoutUpdate();
+
     // Explicitly redraw the spectrogram for the newly active tab
     requestAnimationFrame(() => { // Ensure redraw happens after layout update
         let canvasToDraw = null;
-        let dataToDraw = null;
-        let drawFunction = null;
+    let dataToDraw = null;
+    let drawFunction = null;
 
-        if (tabId === 'file1-tab') {
+    if (tabId === 'file1-tab') {
             canvasToDraw = elements.spectrogramCanvases[0];
-            dataToDraw = window.SpectrogramVisualizer.state.spectrograms.file1;
-            drawFunction = window.SpectrogramVisualizer.drawSpectrogram;
-        } else if (tabId === 'file2-tab') {
+        dataToDraw = window.SpectrogramVisualizer.state.spectrograms.file1;
+        drawFunction = window.SpectrogramVisualizer.drawSpectrogram;
+    } else if (tabId === 'file2-tab') {
             canvasToDraw = elements.spectrogramCanvases[1];
-            dataToDraw = window.SpectrogramVisualizer.state.spectrograms.file2;
-            drawFunction = window.SpectrogramVisualizer.drawSpectrogram;
-        } else if (tabId === 'diff-tab') {
+        dataToDraw = window.SpectrogramVisualizer.state.spectrograms.file2;
+        drawFunction = window.SpectrogramVisualizer.drawSpectrogram;
+    } else if (tabId === 'diff-tab') {
             canvasToDraw = elements.spectrogramCanvases[2];
-            dataToDraw = window.SpectrogramVisualizer.state.spectrograms.diff;
-            drawFunction = window.SpectrogramVisualizer.drawDiffSpectrogram;
-        }
+        dataToDraw = window.SpectrogramVisualizer.state.spectrograms.diff;
+        drawFunction = window.SpectrogramVisualizer.drawDiffSpectrogram;
+    }
 
         if (canvasToDraw && dataToDraw && drawFunction) {
-            const ctx = canvasToDraw.getContext('2d');
-            if (ctx) {
-                drawFunction(dataToDraw, ctx, canvasToDraw);
+        const ctx = canvasToDraw.getContext('2d');
+        if (ctx) {
+            drawFunction(dataToDraw, ctx, canvasToDraw);
                 needsRedraw = true; // Ensure overlay is also redrawn on next animation frame
-            } else {
-                console.error("Could not get context for canvas:", canvasToDraw.id);
-            }
         } else {
-            console.warn(`No data or canvas to draw for tab ${tabId}`);
+            console.error("Could not get context for canvas:", canvasToDraw.id);
         }
+    } else {
+            console.warn(`No data or canvas to draw for tab ${tabId}`);
+    }
     });
 }
 
@@ -159,6 +159,37 @@ function animationLoop(timestamp) {
         
         // Update time display without triggering a redraw
         updateTimeDisplay(currentTime, audioState.duration);
+        
+        // Force redraw the LUFS comparison chart on every frame to keep playhead position updated
+        if (window.LufsCalculator?.state?.initialized) {
+            try {
+                // Use the actual chart object from state, which is what's used in lufs.js
+                const compChartObj = window.LufsCalculator.state.charts.comparisonChart;
+                if (compChartObj) {
+                    compChartObj.draw();
+                }
+                // Also redraw the LUFS difference chart
+                const diffChartObj = window.LufsCalculator.state.charts.lufsDifferenceChart;
+                if (diffChartObj) {
+                    diffChartObj.draw();
+                }
+            } catch (e) {
+                // Handle silent fail for chart errors
+                console.debug("Chart redraw failed:", e);
+            }
+        }
+        
+        // Force redraw the spectrum charts if they exist
+        if (window.SpectrumAnalyzer?.state?.initialized) {
+            const specCompChart = window.SpectrumAnalyzer.state.charts.comparisonChart;
+            if (specCompChart) {
+                specCompChart.draw();
+            }
+            const specDiffChart = window.SpectrumAnalyzer.state.charts.differenceChart;
+            if (specDiffChart) {
+                specDiffChart.draw();
+            }
+        }
         
         // Only redraw the canvas if needed (playback, dragging, or explicit request)
         if (needsRedraw || audioState.isPlaying || uiState.dragMode) {
@@ -224,6 +255,11 @@ function updateUI() {
     
     // Mark that we need a redraw
     needsRedraw = true;
+
+    // Update LUFS display (this reads loop state from AudioEngine)
+    if (window.LufsCalculator) {
+        window.LufsCalculator.updateLufsUI();
+    }
 }
 
 // Version of positionOverlay that doesn't trigger UI updates or redraws directly
@@ -243,8 +279,8 @@ function positionOverlayWithoutUpdate() {
     const newStyles = {
         top: `${activeCanvas.offsetTop}px`,
         left: `${activeCanvas.offsetLeft}px`,
-        width: `${displayWidth}px`,
-        height: `${displayHeight}px`
+        width: `${displayWidth}px`, 
+        height: `${displayHeight}px` 
     };
 
     // Compare current styles
@@ -327,6 +363,16 @@ async function processSingleFile(file, fileNumber) {
         if (!ctx) throw new Error(`Context for file ${fileNumber} canvas failed.`);
         window.SpectrogramVisualizer.drawSpectrogram(spectrogramData, ctx, canvas);
 
+        // Calculate LUFS Data
+        if (window.LufsCalculator) {
+            showStatus(`Calculating LUFS for ${filename}...`);
+            // Use await if calculateLufs becomes async, otherwise it runs in background
+            window.LufsCalculator.calculateLufs(audioBuffer, fileNumber);
+            // LUFS UI update is handled within calculateLufs
+        } else {
+             console.warn("LufsCalculator not available.");
+        }
+
         console.log(`File ${fileNumber} (${filename}) processed successfully.`);
         return true; // Indicate success
 
@@ -339,6 +385,12 @@ async function processSingleFile(file, fileNumber) {
         if (window.SpectrogramVisualizer) {
              window.SpectrogramVisualizer.state.spectrograms[`file${fileNumber}`] = null;
         }
+         // Clear LUFS data on error
+         if (window.LufsCalculator) {
+             window.LufsCalculator.state.results[`file${fileNumber}`] = null;
+             // Trigger UI update to clear LUFS display if needed
+             window.LufsCalculator.updateLufsUI();
+         }
         // Optionally clear canvas
         const canvas = elements.spectrogramCanvases[fileNumber - 1];
         if (canvas) {
@@ -375,9 +427,9 @@ async function handleFileSelect(event, fileNumber) {
             
             if (success2) {
                 // Both files loaded successfully
-                createDiffSpectrogram(); 
+                createDiffSpectrogram();
                 // Update spectrum plots for both files + difference
-                if (window.SpectrumAnalyzer) window.SpectrumAnalyzer.computeAndPlotSpectra(); 
+                if (window.SpectrumAnalyzer) window.SpectrumAnalyzer.computeAndPlotSpectra();
                 updateDynamicLabels();
                 updateTimeDisplay(0, window.AudioEngine.state.duration);
                 updateUI();
@@ -449,13 +501,13 @@ async function handleFileSelect(event, fileNumber) {
          // Update common UI elements
          updateDynamicLabels();
          updateTimeDisplay(0, window.AudioEngine.state.duration); 
-         updateUI();
+         updateUI(); // Ensure LUFS updates after single file load
     } else {
         // Processing failed, status already shown by processSingleFile
         // UI should reflect the state before this file attempt
         updateDynamicLabels(); // Ensure labels are correct if a file failed to load over another
         updateTimeDisplay(0, window.AudioEngine.state.duration); 
-        updateUI();
+        updateUI(); // Ensure LUFS UI is updated/cleared on failure
     }
     // Clear the file input value after processing
     event.target.value = null;
@@ -540,16 +592,21 @@ function handleMouseDown(event, canvasIndex) {
     window.AudioEngine.seekToTime(clickTime);
 
     needsRedraw = true;
+
+    // Update LUFS display for the clicked point
+    if (window.LufsCalculator) {
+         window.LufsCalculator.updateLufsUI();
+    }
 }
 
 // Handle mouse move = potential dragging + tooltip update
 function handleMouseMove(event) {
     if (uiState.dragMode) {
         const activeCanvas = document.querySelector(`#${uiState.activeTab} canvas.spectrogram`);
-        if (!activeCanvas) return;
+    if (!activeCanvas) return;
 
-        const rect = activeCanvas.getBoundingClientRect();
-        const x = event.clientX - rect.left; 
+    const rect = activeCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
         const boundedX = Math.max(0, Math.min(rect.width, x));
 
         const duration = window.AudioEngine.state.duration;
@@ -569,6 +626,7 @@ function handleMouseMove(event) {
             newEnd = dragTime;
         }
 
+        // Update loop region in Audio Engine (but don't enable loop mode yet)
         window.AudioEngine.setLoopRegion(newStart, newEnd, false);
         needsRedraw = true;
         hideTooltip();
@@ -608,7 +666,8 @@ function handleMouseUp(event) {
     const startTime = startPosRatio * duration;
     const endTime = endPosRatio * duration;
 
-    const enableLoop = endTime > startTime + 0.01; // Add small threshold to distinguish click vs drag
+    // Add small threshold to distinguish click vs drag
+    const enableLoop = endTime > startTime + 0.01;
 
     window.AudioEngine.setLoopRegion(startTime, endTime, enableLoop);
 
@@ -617,8 +676,14 @@ function handleMouseUp(event) {
     needsRedraw = true;
 
     // Trigger spectrum analysis update *before* potentially restarting playback
-    if (window.SpectrumAnalyzer && enableLoop) {
-        window.SpectrumAnalyzer.handleTimeRangeSelection(startTime, endTime);
+    if (window.SpectrumAnalyzer) {
+        if (enableLoop) {
+            // Update spectrum analyzer with selected time range
+            window.SpectrumAnalyzer.handleTimeRangeSelection(startTime, endTime);
+        } else {
+            // If it's a click (not a drag), reset to full song
+            window.SpectrumAnalyzer.updateTimeRange(0, duration);
+        }
     }
 
     // 3. Resume playback if it was playing before drag
@@ -636,6 +701,8 @@ function handleMouseUp(event) {
         const seekTime = enableLoop ? startTime : startTime;
         window.AudioEngine.seekToTime(seekTime); // Updates engine's currentTime
         updateTimeDisplay(window.AudioEngine.getCurrentTime(), duration); // Update display manually
+        // Request redraw to show final playhead position
+        needsRedraw = true;
         // No need to update highlighting if not playing before and not starting now
     }
 }
@@ -711,7 +778,7 @@ function updateTooltip(event) {
     positionTooltip(event.clientX, event.clientY);
 
     // Show tooltip
-    showTooltip();
+    showTooltip(); // Call the actual showTooltip function
 }
 
 // Format frequency with appropriate units
@@ -818,29 +885,14 @@ function createDiffSpectrogram() {
     const ctx = diffCanvas.getContext('2d');
     const spec1 = window.SpectrogramVisualizer.state.spectrograms.file1;
     const spec2 = window.SpectrogramVisualizer.state.spectrograms.file2;
-    
+ 
+
     // Calculate and draw the diff spectrogram
     const diffData = window.SpectrogramVisualizer.calculateDiffSpectrogram(spec1, spec2, diffCanvas, ctx);
     
     // Store in state
     window.SpectrogramVisualizer.state.spectrograms.diff = diffData;
     
-    // REMOVED: Spectrum analyzer updates are now handled in handleFileSelect
-    // after both files are confirmed loaded and duration is finalized.
-    /*
-    if (window.SpectrumAnalyzer && 
-        window.AudioEngine.state.loopMode && 
-        window.AudioEngine.state.loopEnd > window.AudioEngine.state.loopStart) {
-        window.SpectrumAnalyzer.updateTimeRange(
-            window.AudioEngine.state.loopStart,
-            window.AudioEngine.state.loopEnd
-        );
-    } else if (window.SpectrumAnalyzer) {
-        // Default to full file if no range selected - this happens after loading both files
-        // Handled within handleFileSelect now
-        // window.SpectrumAnalyzer.updateTimeRange(0, window.AudioEngine.state.duration);
-    }
-    */
 }
 
 // Update the time display
@@ -1009,7 +1061,7 @@ function setupEventListeners() {
         if (window.SpectrogramVisualizer && typeof window.SpectrogramVisualizer.redrawAllSpectrograms === 'function') {
             window.SpectrogramVisualizer.redrawAllSpectrograms();
         }
-        // Update UI (repositions overlay to new display size)
+        // Update UI (repositions overlay, updates LUFS charts etc.)
         updateUI(); 
     }, 150)); // 150ms debounce
     
@@ -1107,22 +1159,37 @@ function drawPlaybackVisuals(ctx, canvas, currentTime, duration, loopStart, loop
     ctx.stroke();
 }
 
-// Update tab labels with current filenames
+// Update tab labels and stats table headers with current filenames
 function updateDynamicLabels() {
     const audioState = window.AudioEngine?.state;
     if (!audioState) return;
 
     const tab1Button = document.getElementById('tab1');
     const tab2Button = document.getElementById('tab2');
+    const statsHeader1 = document.getElementById('statsHeaderFile1');
+    const statsHeader2 = document.getElementById('statsHeaderFile2');
+    
+    const filename1 = audioState.filenames.file1 || 'File 1';
+    const filename2 = audioState.filenames.file2 || 'File 2';
 
     if (tab1Button) {
         // Keep indicator if it exists
         const indicator = tab1Button.querySelector('.playing-indicator');
-        tab1Button.firstChild.textContent = (audioState.filenames.file1 || 'File 1') + ' '; // Add space before indicator
+        tab1Button.firstChild.textContent = filename1 + ' '; // Add space before indicator
     }
     if (tab2Button) {
         const indicator = tab2Button.querySelector('.playing-indicator');
-        tab2Button.firstChild.textContent = (audioState.filenames.file2 || 'File 2') + ' '; // Add space before indicator
+        tab2Button.firstChild.textContent = filename2 + ' '; // Add space before indicator
+    }
+    
+    // Update stats table headers
+    if (statsHeader1) {
+        statsHeader1.textContent = filename1;
+        statsHeader1.title = filename1; // Set title attribute for full name on hover
+    }
+    if (statsHeader2) {
+        statsHeader2.textContent = filename2;
+        statsHeader2.title = filename2; // Set title attribute for full name on hover
     }
     
     // Potentially update chart titles/legends here if needed, 
@@ -1146,9 +1213,10 @@ function handleSwapFiles() {
     // 1. Swap data in modules
     window.AudioEngine.swapFiles();
     window.SpectrogramVisualizer.swapFiles();
+    if (window.LufsCalculator) window.LufsCalculator.swapLufsData(); // Swap LUFS data
 
     // 2. Recalculate difference spectrogram
-    createDiffSpectrogram(); 
+    createDiffSpectrogram();
 
     // 3. Recalculate and plot spectrum analysis
     if (window.SpectrumAnalyzer) {
@@ -1171,4 +1239,4 @@ function handleSwapFiles() {
 
     showStatus("Files swapped successfully.");
     console.log("File swap complete.");
-} 
+}

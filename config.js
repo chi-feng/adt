@@ -2,7 +2,7 @@
 
 const AppConfig = {
     // --- Analysis Settings ---
-    ANALYSIS_MAX_FREQ: 20000,     // Target max frequency for analysis/display (Hz)
+    ANALYSIS_MAX_FREQ: 22000,     // Target max frequency for analysis/display (Hz)
     TARGET_MAX_TIME_STEPS: 4800,  // Target max number of time steps in spectrogram
     BASE_FFT_SIZE: 2048,          // Base FFT size for 44.1kHz reference
     BASE_SAMPLE_RATE: 44100,      // Reference sample rate for FFT calculation

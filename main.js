@@ -18,6 +18,11 @@ function initApp() {
         window.SpectrumAnalyzer.init();
     }
     
+    // Initialize LUFS Calculator if available
+    if (window.LufsCalculator) {
+        window.LufsCalculator.init();
+    }
+    
     console.log('Initialization complete');
 }
 
